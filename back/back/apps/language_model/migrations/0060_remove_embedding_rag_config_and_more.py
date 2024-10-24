@@ -19,7 +19,6 @@ class Migration(migrations.Migration):
             model_name="embedding",
             name="retriever_config",
             field=models.ForeignKey(
-                default=1,
                 editable=False,
                 on_delete=django.db.models.deletion.CASCADE,
                 to="language_model.retrieverconfig",
