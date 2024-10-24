@@ -10,11 +10,8 @@ on:
       - "widget/**"
       - "Dogefile"
     branches:
-      - "master"
+      - "production"
       - "develop"
-      - "feature/**caps**"
-      - "feature/**withmadrid**"
-      - "feature/**chatf**"
   workflow_dispatch:
 
 jobs:
