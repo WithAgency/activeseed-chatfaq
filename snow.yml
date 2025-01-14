@@ -66,7 +66,7 @@ envs:
     SENTRY_ENVIRONMENT: "${{ deployment::env.name }}"
     ENVIRONMENT: "${{ deployment::env.name }}"
     DATABASE_URL: '${{ resources::pg_databases.psql.url }}'
-    AWS_ACCESS_KEY_ID: '${{ secrets::AWS_ACCESS_KEY_ID }}'
+    AWS_ACCESS_KEY_ID: '${{ vars::AWS_ACCESS_KEY_ID }}'
     AWS_SECRET_ACCESS_KEY: '${{ secrets::AWS_SECRET_ACCESS_KEY }}'
     AWS_STORAGE_BUCKET_NAME: '${{ vars::AWS_STORAGE_BUCKET_NAME }}'
     AWS_S3_SIGNATURE_VERSION: 's3v4'
@@ -79,7 +79,7 @@ envs:
     RAY_ROTATION_MAX_BYTES: '10485760'
     RAY_ROTATION_BACKUP_COUNT: '1'
     OPENAI_API_KEY: '${{ secrets::OPENAI_API_KEY }}'
-    SENTRY_DSN: '${{ secrets::SENTRY_DSN_BACK }}'
+    SENTRY_DSN: '${{ vars::SENTRY_DSN_BACK }}'
 
   ray_worker:
     BACKEND_HOST: '${{ components::back.private_url }}'
@@ -90,4 +90,4 @@ envs:
     NUXT_PROXY_OPTIONS_TARGET: '${{ components::back.private_url }}'
     NUXT_API_URL: '${{ components::back.private_url }}'
     NUXT_PUBLIC_CHATFAQ_WS: 'wss://${{ domains::chatfaq.name }}'
-    SENTRY_DSN: '${{ secrets::SENTRY_DSN_ADMIN }}'
+    SENTRY_DSN: '${{ vars::SENTRY_DSN_ADMIN }}'
