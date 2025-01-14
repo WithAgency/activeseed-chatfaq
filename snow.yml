@@ -64,7 +64,7 @@ envs:
     BASE_URL: '${{ resources::app.url }}'
     SECRET_KEY: '${{ secrets::SECRET_KEY }}'
     SENTRY_ENVIRONMENT: "${{ deployment::env.name }}"
-    ENVIRONMENT: "${{ deployment::env.key }}"
+    ENVIRONMENT: "${{ deployment::env.name }}"
     DATABASE_URL: '${{ resources::pg_databases.psql.url }}'
     AWS_ACCESS_KEY_ID: '${{ secrets::AWS_ACCESS_KEY_ID }}'
     AWS_SECRET_ACCESS_KEY: '${{ secrets::AWS_SECRET_ACCESS_KEY }}'
