@@ -20,11 +20,11 @@ components:
     size_hint: ram >= 4g
     internal_ports: [8265, 6375, 9090]
 
-#  - id: ray
-#    image: ray
-#    envs: [django, ray_worker]
-#    size_hint: ram >= 16g
-#    run_command: /.venv/bin/ray start --address=back:6375 --resources='{"tasks":100,"ai_components":100}' --block
+  - id: ray
+    image: ray
+    envs: [django, ray_worker]
+    size_hint: ram >= 16g
+    run_command: /.venv/bin/ray start --address=back:6375 --resources='{"tasks":100,"ai_components":100}' --block
 
   - id: migrate
     image: back
