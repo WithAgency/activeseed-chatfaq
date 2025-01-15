@@ -4,7 +4,9 @@ images:
   - id: back
     context: back
   - id: ray
-    context: ray
+    registry: chatfaq
+    repository: back-chatrag
+    tag: "production"
 
 components:
   - id: admin
