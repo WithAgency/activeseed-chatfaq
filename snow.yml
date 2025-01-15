@@ -16,6 +16,7 @@ components:
     image: back
     envs: [django]
     size_hint: ram >= 4g
+    internal_ports: [8265, 6375, 9090]
 
   - id: ray
     image: ray
