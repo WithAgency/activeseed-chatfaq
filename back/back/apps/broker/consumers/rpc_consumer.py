@@ -36,6 +36,7 @@ class RPCConsumer(CustomAsyncConsumer, AsyncJsonWebsocketConsumer):
         super().__init__(*args, **kwargs)
         self.fsm_id = None
         self.uuid = str(uuid.uuid4())
+        self.opened_rpc_sess_calls = {}
 
     def get_group_name(self):
         return f"rpc_{self.fsm_id}_{self.uuid}"
@@ -81,10 +82,24 @@ class RPCConsumer(CustomAsyncConsumer, AsyncJsonWebsocketConsumer):
         )
 
     async def disconnect(self, close_code):
-        logger.debug("Disconnecting from RPC consumer")
+        logger.debug("Disconnecting from RPC consumer...")
+        for conversation_id in self.opened_rpc_sess_calls:
+            # continue
+            if not self.opened_rpc_sess_calls[conversation_id]:
+                continue
+            res = {
+                "type": "rpc_response",
+                "status": WSStatusCodes.ok.value,
+                "rpc_died": True,
+            }
+            await self.channel_layer.group_send(
+                WSBotConsumer.create_group_name(conversation_id), res
+            )
         # Leave room group
         await self.channel_layer.group_discard(self.get_group_name(), self.channel_name)
+        logger.debug("Disconnecting from RPC consumer: Removing from round robin queue")
         await database_sync_to_async(ConsumerRoundRobinQueue.remove)(self.get_group_name())  # Remove from round robin queue
+        logger.debug("...Disconnected from RPC consumer")
 
     async def receive_json(self, content, **kwargs):
         serializer = RPCResponseSerializer(data=content)
@@ -114,7 +129,7 @@ class RPCConsumer(CustomAsyncConsumer, AsyncJsonWebsocketConsumer):
             )
         fsm, created, errors = await database_sync_to_async(
             FSMDefinition.get_or_create_from_definition
-        )(data["name"], data["definition"], data["overwrite"])
+        )(data["name"], data["definition"], data["authentication_required"], data["overwrite"])
         if errors:
             await self.error_response(
                 {"payload": {"errors": errors, "request_info": data}}
@@ -150,10 +165,14 @@ class RPCConsumer(CustomAsyncConsumer, AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_send(
             WSBotConsumer.create_group_name(serializer.validated_data["ctx"]["conversation_id"]), res
         )
+        self.opened_rpc_sess_calls[serializer.validated_data["ctx"]["conversation_id"]] = not serializer.validated_data["last"]
+        if not self.opened_rpc_sess_calls[serializer.validated_data["ctx"]["conversation_id"]]:
+            del self.opened_rpc_sess_calls[serializer.validated_data["ctx"]["conversation_id"]]
 
     async def rpc_call(self, data: dict):
         data["status"] = WSStatusCodes.ok.value
         data["type"] = RPCMessageType.rpc_request.value
+        self.opened_rpc_sess_calls[data["payload"]["ctx"]["conversation_id"]] = True
         await self.send(json.dumps(data))
 
     async def error_response(self, data: dict):

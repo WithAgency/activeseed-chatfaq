@@ -1,96 +1,75 @@
 images:
   - id: admin
     context: admin
+    dockerfile: Dockerfile
   - id: back
     context: back
-  - id: ray
-    registry: chatfaq
-    repository: back-chatrag
-    tag: "production"
+    dockerfile: Dockerfile
 
 components:
   - id: admin
     image: admin
     envs: [admin]
-    size_hint: ram >= 1g
-
+    size_hint: ram >= 512m
   - id: back
     image: back
-    envs: [django]
-    size_hint: ram >= 4g
-    internal_ports: [8265, 6375, 9090]
-
-#  - id: ray
-#    image: ray
-#    envs: [django, ray_worker]
-#    size_hint: ram >= 16g
-#    run_command: /.venv/bin/ray start --address=back:6375 --resources='{"tasks":100,"ai_components":100}' --block
-
-  - id: migrate
-    image: back
-    envs: [django]
+    envs: [back]
     size_hint: ram >= 1g
 
 ingresses:
-  - match:
-      prefix: '/back'
-    target:
-      component: back
-      port: 8000
   - match:
       prefix: '/'
     target:
       component: admin
       port: 3000
+  - match:
+      prefix: '/back/'
+    target:
+      component: back
+      port: 8000
 
 hooks:
   - when: 'pre-deploy'
-    component: migrate
+    component: chatfaq-migrate
     run_command: modelw-docker run python manage.py migrate
 
 domains:
-  - id: chatfaq
+  - id: back
 
 resources:
   redis_clusters:
     - id: redis
-      version: "7"
+      version: '7'
   pg_clusters:
     - id: psql
-      version: "15"
+      version: '15'
   pg_databases:
     - id: psql
       cluster: psql
 
 envs:
-  django:
+  admin:
+    NUXT_PROXY_OPTIONS_TARGET: '${{ components::back.private_url }}'
+    NUXT_API_URL: '${{ components::back.private_url }}'
+    NUXT_PUBLIC_CHATFAQ_WS: 'wss://${{ domains::back.name }'
+    SENTRY_DSN: '${{ vars::SENTRY_DSN_ADMIN }}'
+    SENTRY_ENVIRONMENT: '${{ deployment::env.name }}'
+  back:
     BASE_URL: '${{ resources::app.url }}'
     SECRET_KEY: '${{ secrets::SECRET_KEY }}'
-    SENTRY_ENVIRONMENT: "${{ deployment::env.name }}"
-    ENVIRONMENT: "${{ deployment::env.name }}"
+    SENTRY_ENVIRONMENT: '${{ deployment::env.name }}'
+    SENTRY_DSN: '${{ vars::SENTRY_DSN_BACK }}'
+    ENVIRONMENT: '${{ deployment::env.name }}'
+    REDIS_URL: '${{ resources::redis_clusters.redis.url }}'
     DATABASE_URL: '${{ resources::pg_databases.psql.url }}'
     AWS_ACCESS_KEY_ID: '${{ vars::AWS_ACCESS_KEY_ID }}'
     AWS_SECRET_ACCESS_KEY: '${{ secrets::AWS_SECRET_ACCESS_KEY }}'
     AWS_STORAGE_BUCKET_NAME: '${{ vars::AWS_STORAGE_BUCKET_NAME }}'
     AWS_S3_SIGNATURE_VERSION: 's3v4'
-    STORAGES_MODE: do
+    AWS_S3_REGION_NAME: '${{ vars::AWS_S3_REGION_NAME }}'
+    AWS_S3_CUSTOM_DOMAIN: '${{ vars::AWS_S3_CUSTOM_DOMAIN }}'
+    STORAGES_MODE: 'do'
     STORAGE_MAKE_FILES_PUBLIC: 'no'
-    REDIS_URL: '${{ resources::redis_clusters.redis.url }}'
-    REMOTE_RAY_CLUSTER_ADDRESS_HEAD: 'back:6375'
-    DO_REGION: 'ams3'
-    RAY_BACKEND_LOG_LEVEL: 'warning'
-    RAY_ROTATION_MAX_BYTES: '10485760'
-    RAY_ROTATION_BACKUP_COUNT: '1'
+    DO_REGION: '${{ vars::AWS_S3_REGION_NAME }}'
     OPENAI_API_KEY: '${{ secrets::OPENAI_API_KEY }}'
-    SENTRY_DSN: '${{ vars::SENTRY_DSN_BACK }}'
-
-  ray_worker:
-    BACKEND_HOST: '${{ components::back.private_url }}'
-    BACKEND_TOKEN: '${{ secrets::CHATFAQ_TOKEN }}'
-
-  admin:
-    SENTRY_ENVIRONMENT: "${{ deployment::env.name }}"
-    NUXT_PROXY_OPTIONS_TARGET: '${{ components::back.private_url }}'
-    NUXT_API_URL: '${{ components::back.private_url }}'
-    NUXT_PUBLIC_CHATFAQ_WS: 'wss://${{ domains::chatfaq.name }}'
-    SENTRY_DSN: '${{ vars::SENTRY_DSN_ADMIN }}'
+    USE_RAY: 'False'
