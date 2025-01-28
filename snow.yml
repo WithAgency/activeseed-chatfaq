@@ -67,7 +67,6 @@ envs:
     AWS_STORAGE_BUCKET_NAME: '${{ vars::AWS_STORAGE_BUCKET_NAME }}'
     AWS_S3_SIGNATURE_VERSION: 's3v4'
     AWS_S3_REGION_NAME: '${{ vars::AWS_S3_REGION_NAME }}'
-    AWS_S3_CUSTOM_DOMAIN: 'activeseed-chatfaq-backend-dev.ams3.digitaloceanspaces.com'
     AWS_S3_ENDPOINT_URL: 'https://ams3.digitaloceanspaces.com'
     STORAGES_MODE: 'do'
     STORAGE_MAKE_FILES_PUBLIC: 'no'
