@@ -1,7 +1,7 @@
 <template>
     <div class="chat-wrapper" :class="{ 'dark-mode': store.darkMode, 'fit-to-parent': store.fitToParent, 'stick-input-prompt': store.stickInputPrompt }" @click="store.menuOpened = false">
         <div class="conversation-content" ref="conversationContent" :class="{'dark-mode': store.darkMode, 'fit-to-parent-conversation-content': store.fitToParent}">
-            <div class="stacks" v-for="(message, index) in store.messages">
+            <div class="stacks" :class="{'merge-to-prev': getFirstLayerMergeToPrev(message)}" v-for="(message, index) in store.messages">
                 <ChatMsgManager
                     v-if="isRenderableStackType(message)"
                     :message="message"
@@ -26,27 +26,26 @@
                 <div
                     :placeholder="$t('writeaquestionhere')"
                     class="chat-prompt"
-                    :class="{ 
-                        'dark-mode': store.darkMode, 
+                    :class="{
+                        'dark-mode': store.darkMode,
                         'maximized': store.maximized,
-                        'disabled': isFinalFeedback 
+                        'disabled': conversationClosed
                     }"
                     ref="chatInput"
                     @keydown="(ev) => manageHotKeys(ev, sendMessage)"
-                    :contenteditable="!isFinalFeedback"
+                    :contenteditable="!conversationClosed"
                     @input="($event)=>thereIsContent = $event.target.innerHTML.trim().length !== 0"
                 />
             </div>
-            <div class="prompt-right-button" 
+            <div class="prompt-right-button"
                  :class="{
                      'dark-mode': store.darkMode,
-                     'disabled': isFinalFeedback
-                 }" 
-                 @click="() => { 
-                     if (!isFinalFeedback && availableMicro) { 
-                         speechToText() 
-                     } else if (!isFinalFeedback && availableSend) { 
-                         sendMessage() 
+                 }"
+                 @click="() => {
+                     if (!conversationClosed && availableMicro) {
+                         speechToText()
+                     } else if (!conversationClosed && availableSend) {
+                         sendMessage()
                      }
                  }">
                 <div v-if="speechRecognitionRunning" class="micro-anim-elm has-scale-animation"></div>
@@ -72,8 +71,8 @@ const chatInput = ref(null);
 const conversationContent = ref(null)
 const feedbackSentDisabled = ref(true)
 const thereIsContent = ref(false)
-const notRenderableStackTypes = ["gtm_tag", undefined]
-const isFinalFeedback = ref(false)
+const notRenderableStackTypes = ["gtm_tag", "close_conversation",undefined]
+const conversationClosed = ref(false)
 
 let ws = undefined
 let historyIndexHumanMsg = -1
@@ -88,7 +87,7 @@ watch(() => store.feedbackSent, animateFeedbackSent)
 watch(() => store.resendMsgId, resendMsg)
 watch(() => store.messagesToBeSentSignal, sendMessagesToBeSent)
 watch(() => store.selectedPlConversationId, () => {
-    isFinalFeedback.value = false
+    conversationClosed.value = false
 })
 
 onMounted(async () => {
@@ -98,7 +97,9 @@ onMounted(async () => {
 function isLastOfType(index) {
     return index === store.messages.length - 1 || store.messages[index + 1].sender.type !== store.messages[index].sender.type
 }
-
+function getFirstLayerMergeToPrev(message) {
+    return message?.stack[0]?.payload.merge_to_prev;
+}
 function scrollConversationDown() {
     nextTick(() => {
         conversationContent.value.scroll({top: conversationContent.value.scrollHeight, behavior: "smooth"})
@@ -157,8 +158,8 @@ function createConnection() {
             store.scrollToBottom += 1;
         if (isFullyScrolled())  // Scroll down if user is at the bottom
             store.scrollToBottom += 1;
-        if (msg.stack[0]?.type === 'star_rating' || msg.stack[0]?.type === 'text_feedback')
-            isFinalFeedback.value = true
+        if (msg.stack[0]?.type === 'close_conversation')
+            conversationClosed.value = true
 
         sendToGTM(msg)
         store.addMessage(msg);
@@ -210,7 +211,7 @@ async function initializeConversation() {
             return await store.openConversation(store.initialSelectedPlConversationId);
         }
     }
-    isFinalFeedback.value = false
+    conversationClosed.value = false
     store.createNewConversation(store.initialSelectedPlConversationId);
 }
 
@@ -268,7 +269,7 @@ function sendMessage(_message) {
     store.messages.push(message);
     ws.send(JSON.stringify(message));
     store.scrollToBottom += 1;
-    
+
     chatInput.value?.blur(); // Remove focus from the input
 }
 
@@ -285,7 +286,7 @@ function sendMessagesToBeSent() {
 }
 
 function canSend() {
-    return !store.waitingForResponse && !store.disconnected && !speechRecognitionRunning.value && !isFinalFeedback.value
+    return !store.waitingForResponse && !store.disconnected && !speechRecognitionRunning.value && !conversationClosed.value
 }
 
 function createMessageFromInputPrompt() {
@@ -677,5 +678,7 @@ const activeMicro = computed(() => {
     height: 100%;
     width: 100%;
 }
-
+.merge-to-prev {
+    display: none;
+}
 </style>
