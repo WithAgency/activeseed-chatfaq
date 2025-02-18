@@ -1,8 +1,12 @@
+import asyncio
 import json
+import os
+import random
+import uuid
 from typing import Mapping, Sequence
-from urllib.parse import urlencode
 
 import requests
+import websockets
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from health_check.cache.backends import CacheBackend
@@ -256,3 +260,170 @@ are accessible and return HTML content.
     def suggest_reboot(self, outcome: Outcome) -> Sequence[str]:
         return []
 
+
+AS_RAG_GOLDEN_ANSWER = """Les ETF (Exchange-Traded Funds) sont des fonds d'investissement qui se négocient en bourse, comme des actions. Voici quelques points clés à leur sujet :
+
+Réplique un indice : Les ETF visent à reproduire la performance d'un indice boursier ou d'un panier d'actifs, tel que des actions, des obligations ou des matières premières.
+
+Négociabilité : Contrairement aux fonds d'investissement traditionnels, les parts d'ETF peuvent être achetées et vendues tout au long de la journée de bourse, permettant une plus grande flexibilité.
+
+Diversification : Les ETF offrent une exposition à un large éventail d'actifs, ce qui permet une diversification efficace du portefeuille.
+
+Frais généralement bas : Les frais de gestion des ETF sont souvent inférieurs à ceux des fonds actifs, ce qui en fait une option attractive pour les investisseurs soucieux des coûts.
+
+Les ETF sont devenus une innovation financière majeure et sont largement utilisés dans les stratégies d'investissement modernes."""
+
+class RAGSimulation(HealthCheck):
+    """
+    Simulates a RAG question with the chatbot to check if the WebSocket
+    connection, message processing and RAG response generation are working correctly.
+    """
+
+    def get_name(self) -> str:
+        return "RAG Simulation"
+    
+    async def _receive_json_message(self, websocket, timeout=20.0):
+        """
+        Helper method to receive a JSON message from the websocket.
+        """
+        try:
+            message_text = await asyncio.wait_for(websocket.recv(), timeout)
+            return json.loads(message_text)
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError("Timeout waiting for message from server")
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON response from server")
+    
+    async def _wait_for_initial_messages(self, websocket):
+        """
+        Waits for three initial messages, throwing an error if any indicate a problem.
+        """
+        for _ in range(3):
+            response = await self._receive_json_message(websocket)
+            if response.get("status") == 400:
+                raise ValueError(f"Error in initial message from WS: {response.get('payload')}")
+    
+    async def _wait_for_rag_response(self, websocket):
+        """
+        Waits for RAG response chunks until the final chunk (with last_chunk=True)
+        is received.
+        """
+        while True:
+            response = await self._receive_json_message(websocket)
+            if response.get("last_chunk", False):
+                return response
+    
+    async def _run_rag(self, fsm_def="active_seed_fsm", user_id=None):
+        """
+        Runs a RAG question simulation.
+        """
+        conversation_id = int(random.random() * 1000000000)
+        # Only create a new user ID if one wasn't provided.
+        if not user_id:
+            user_id = str(uuid.uuid4())
+
+        uri = (
+            os.getenv("INTERNAL_WS_URL")
+            + "/back/ws/broker/"
+            + str(conversation_id)
+            + "/"
+            + fsm_def
+            + "/"
+            + (f"{user_id}/" if user_id else "")
+            + '?state_overwrite=RAG'
+        )
+
+        try:
+            async with websockets.connect(uri, close_timeout=1) as websocket:
+                # Process the initial handshake responses.
+                await self._wait_for_initial_messages(websocket)
+
+                # Build and send the message payload.
+                message = {
+                    "sender": {
+                        "type": "human",
+                        "platform": "WS",
+                        "id": user_id,
+                    },
+                    "stack": [
+                        {
+                            "type": "message",
+                            "payload": {
+                                "content": "qu'un ETF?"
+                            }
+                        }
+                    ],
+                    "stack_id": "0",
+                    "stack_group_id": "0",
+                    "last": True
+                }
+                await websocket.send(json.dumps(message))
+
+                # Process responses after sending the message.
+                first_response = await self._receive_json_message(websocket)
+                if first_response.get("status") == 400:
+                    return False, f"Error in initial response from WS: {first_response.get('payload')}"
+
+                gtm_response = await self._receive_json_message(websocket)
+                if gtm_response.get("status") == 400:
+                    return False, f"Error in GTM response from WS: {gtm_response.get('payload')}"
+
+                rag_response = await self._wait_for_rag_response(websocket)
+                response_content = (
+                    rag_response.get("stack", [{}])[0]
+                    .get("payload", {})
+                    .get("content", "")
+                )
+
+                # Verify that the final RAG response has an acceptable length.
+                if len(response_content) < len(AS_RAG_GOLDEN_ANSWER) * 0.7:
+                    return False, (
+                        "RAG response length check failed. "
+                        f"Expected minimum length: {int(len(AS_RAG_GOLDEN_ANSWER) * 0.7)} characters, "
+                        f"Got: {len(response_content)} characters. "
+                        "This might indicate an issue with the RAG system's response generation."
+                    )
+
+                return True, ""
+        except websockets.exceptions.ConnectionClosedError as e:
+            return False, f"WebSocket connection closed unexpectedly: {e.code} {e.reason}"
+        except Exception as e:
+            return False, f"An unexpected error occurred: {type(e).__name__} - {e}"
+
+    async def get_status(self) -> Outcome:
+        """
+        Uses the refactored RAG simulation to determine system health.
+        """
+        try:
+            success, message = await self._run_rag()
+        except Exception as e:
+            return Outcome(
+                instance=self,
+                status=Status.ERROR,
+                message=f"RAG simulation failed: {e}",
+            )
+        if success:
+            return Outcome(
+                instance=self,
+                status=Status.OK,
+                message="RAG simulation successful",
+            )
+        else:
+            return Outcome(
+                instance=self,
+                status=Status.ERROR,
+                message=f"RAG simulation failed: {message}",
+            )
+
+    def get_resolving_actions(self, outcome: Outcome) -> str:
+        return """# __CODE__ &mdash; RAG simulation failed
+
+This check simulates a RAG question with the chatbot via WebSocket to verify:
+- The WebSocket server is reachable.
+- Message processing, including the initial handshake and RAG response generation, is functioning correctly.
+
+Please ensure that the WebSocket server is running, the FSM definitions are correctly configured, and the RAG system generates responses of the expected length.
+"""
+
+    def suggest_reboot(self, outcome: Outcome) -> Sequence[str]:
+        return []

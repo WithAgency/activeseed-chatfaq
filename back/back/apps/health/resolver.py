@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 from dataclasses import dataclass, field
 from typing import Mapping, MutableMapping, Optional, Sequence
@@ -132,6 +133,9 @@ class Resolver:
             # noinspection PyBroadException
             try:
                 status = instance.check.get_status()
+                # Handle async health checks
+                if asyncio.iscoroutine(status):
+                    status = asyncio.run(status)
             except Exception:
                 capture_exception()
                 traceback.print_exc()
@@ -279,6 +283,14 @@ def build_resolver() -> Resolver:
         Instance(
             code="S004",
             check=IFramedMsgs(),
+            depends_on=[],
+        )
+    )
+
+    resolver.register(
+        Instance(
+            code="S005",
+            check=RAGSimulation(),
             depends_on=[],
         )
     )
