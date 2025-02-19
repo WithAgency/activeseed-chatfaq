@@ -282,7 +282,7 @@ class RAGSimulation(HealthCheck):
     def get_name(self) -> str:
         return "RAG Simulation"
     
-    async def _receive_json_message(self, websocket, timeout=20.0):
+    async def _receive_json_message(self, websocket, timeout=10.0):
         """
         Helper method to receive a JSON message from the websocket.
         """
@@ -290,9 +290,9 @@ class RAGSimulation(HealthCheck):
             message_text = await asyncio.wait_for(websocket.recv(), timeout)
             return json.loads(message_text)
         except asyncio.TimeoutError:
-            raise asyncio.TimeoutError("Timeout waiting for message from server")
+            raise asyncio.TimeoutError("Timeout waiting for message from server. Last message: " + message_text)
         except json.JSONDecodeError:
-            raise ValueError("Invalid JSON response from server")
+            raise ValueError("Invalid JSON response from server. Last message: " + message_text)
     
     async def _wait_for_initial_messages(self, websocket):
         """
@@ -308,10 +308,12 @@ class RAGSimulation(HealthCheck):
         Waits for RAG response chunks until the final chunk (with last_chunk=True)
         is received.
         """
+        prev_response = None
         while True:
             response = await self._receive_json_message(websocket)
-            if response.get("last_chunk", False):
-                return response
+            if response.get("last", False):
+                return prev_response # We return the previous response because the last one is empty
+            prev_response = response
     
     async def _run_rag(self, fsm_def="active_seed_fsm", user_id=None):
         """
