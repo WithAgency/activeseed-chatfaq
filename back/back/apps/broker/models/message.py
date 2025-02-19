@@ -42,6 +42,7 @@ class Conversation(ChangesMixin):
     name = models.CharField(max_length=255, null=True, blank=True)
     initial_conversation_metadata = models.JSONField(default=dict)
     authentication_required = models.BooleanField(default=False)
+    fsm_state_override = models.TextField(null=True, blank=True)
 
     def get_first_msg(self):
         return Message.objects.filter(
@@ -334,22 +335,13 @@ class UserFeedback(ChangesMixin):
         ("positive", "Positive"),
         ("negative", "Negative"),
     )
-    message = models.ForeignKey(
-        Message, null=True, on_delete=models.SET_NULL
+    message_source = models.ForeignKey(
+        Message, null=True, on_delete=models.SET_NULL, related_name="source_userfeedback_set"
     )
-    value = models.CharField(max_length=255, choices=VALUE_CHOICES, null=True, blank=True)
-    star_rating = models.IntegerField(
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(1)],
+    message_target = models.ForeignKey(
+        Message, null=True, on_delete=models.SET_NULL, related_name="target_userfeedback_set"
     )
-    star_rating_max = models.IntegerField(
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(1)],
-    )
-    feedback_selection = ArrayField(models.TextField(), null=True, blank=True)
-    feedback_comment = models.TextField(null=True, blank=True)
+    feedback_data = models.JSONField(null=True, blank=True)
 
     def clean(self):
         if self.star_rating and self.star_rating_max:
